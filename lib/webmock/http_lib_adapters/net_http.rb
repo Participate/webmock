@@ -5,7 +5,6 @@ require 'net/https'
 require 'stringio'
 require File.join(File.dirname(__FILE__), 'net_http_response')
 
-
 module WebMock
   module HttpLibAdapters
     class NetHttpAdapter < HttpLibAdapter
@@ -15,23 +14,19 @@ module WebMock
 
       def self.enable!
         Net.send(:remove_const, :HTTP)
-        Net.send(:remove_const, :HTTPSession)
         Net.send(:const_set, :HTTP, @webMockNetHTTP)
-        Net.send(:const_set, :HTTPSession, @webMockNetHTTP)
       end
 
       def self.disable!
         Net.send(:remove_const, :HTTP)
-        Net.send(:remove_const, :HTTPSession)
         Net.send(:const_set, :HTTP, OriginalNetHTTP)
-        Net.send(:const_set, :HTTPSession, OriginalNetHTTP)
 
-        #copy all constants from @webMockNetHTTP to original Net::HTTP
-        #in case any constants were added to @webMockNetHTTP instead of Net::HTTP
-        #after WebMock was enabled.
-        #i.e Net::HTTP::DigestAuth
+        # copy all constants from @webMockNetHTTP to original Net::HTTP
+        # in case any constants were added to @webMockNetHTTP instead of Net::HTTP
+        # after WebMock was enabled.
+        # i.e Net::HTTP::DigestAuth
         @webMockNetHTTP.constants.each do |constant|
-          if !OriginalNetHTTP.constants.map(&:to_s).include?(constant.to_s)
+          unless OriginalNetHTTP.constants.map(&:to_s).include?(constant.to_s)
             OriginalNetHTTP.send(:const_set, constant, @webMockNetHTTP.const_get(constant))
           end
         end
@@ -45,25 +40,25 @@ module WebMock
 
           if Module.method(:const_defined?).arity == 1
             def const_defined?(name)
-              super || self.superclass.const_defined?(name)
+              super || superclass.const_defined?(name)
             end
           else
-            def const_defined?(name, inherit=true)
-              super || self.superclass.const_defined?(name, inherit)
+            def const_defined?(name, inherit = true)
+              super || superclass.const_defined?(name, inherit)
             end
           end
 
           if Module.method(:const_get).arity != 1
-            def const_get(name, inherit=true)
+            def const_get(name, inherit = true)
               super
             rescue NameError
-              self.superclass.const_get(name, inherit)
+              superclass.const_get(name, inherit)
             end
           end
 
           if Module.method(:constants).arity != 0
-            def constants(inherit=true)
-              (super + self.superclass.constants(inherit)).uniq
+            def constants(inherit = true)
+              (super + superclass.constants(inherit)).uniq
             end
           end
         end
@@ -76,7 +71,8 @@ module WebMock
           if webmock_response = WebMock::StubRegistry.instance.response_for_request(request_signature)
             @socket = Net::HTTP.socket_type.new
             WebMock::CallbackRegistry.invoke_callbacks(
-              {lib: :net_http}, request_signature, webmock_response)
+              { lib: :net_http }, request_signature, webmock_response
+            )
             build_net_http_response(webmock_response, request.uri, &block)
           elsif WebMock.net_connect_allowed?(request_signature.uri)
             check_right_http_connection
@@ -84,7 +80,8 @@ module WebMock
               if WebMock::CallbackRegistry.any_callbacks?
                 webmock_response = build_webmock_response(response)
                 WebMock::CallbackRegistry.invoke_callbacks(
-                  {lib: :net_http, real_request: true}, request_signature, webmock_response)
+                  { lib: :net_http, real_request: true }, request_signature, webmock_response
+                )
               end
               response.extend Net::WebMockHTTPResponse
               block.call response if block
@@ -98,17 +95,18 @@ module WebMock
               ensure_actual_connection
               super_with_after_request.call
             else
-              start_with_connect {
+              start_with_connect do
                 super_with_after_request.call
-              }
+              end
             end
           else
-            raise WebMock::NetConnectNotAllowedError.new(request_signature)
+            raise WebMock::NetConnectNotAllowedError, request_signature
           end
         end
 
         def start_without_connect
           raise IOError, 'HTTP session already opened' if @started
+
           if block_given?
             begin
               @socket = Net::HTTP.socket_type.new
@@ -122,7 +120,6 @@ module WebMock
           @started = true
           self
         end
-
 
         def ensure_actual_connection
           if @socket.is_a?(StubSocket)
@@ -144,8 +141,9 @@ module WebMock
           end
         end
 
-        def build_net_http_response(webmock_response, request_uri, &block)
-          response = Net::HTTPResponse.send(:response_class, webmock_response.status[0].to_s).new("1.0", webmock_response.status[0].to_s, webmock_response.status[1])
+        def build_net_http_response(webmock_response, request_uri)
+          response = Net::HTTPResponse.send(:response_class, webmock_response.status[0].to_s).new('1.0',
+                                                                                                  webmock_response.status[0].to_s, webmock_response.status[1])
           body = webmock_response.body
           body = nil if webmock_response.status[0].to_s == '204'
 
@@ -163,9 +161,7 @@ module WebMock
 
           response.extend Net::WebMockHTTPResponse
 
-          if webmock_response.should_timeout
-            raise Net::OpenTimeout, "execution expired"
-          end
+          raise Net::OpenTimeout, 'execution expired' if webmock_response.should_timeout
 
           webmock_response.raise_error_if_any
 
@@ -177,13 +173,13 @@ module WebMock
         def build_webmock_response(net_http_response)
           webmock_response = WebMock::Response.new
           webmock_response.status = [
-             net_http_response.code.to_i,
-             net_http_response.message]
+            net_http_response.code.to_i,
+            net_http_response.message
+          ]
           webmock_response.headers = net_http_response.to_hash
           webmock_response.body = net_http_response.body
           webmock_response
         end
-
 
         def check_right_http_connection
           unless @@alredy_checked_for_right_http_connection ||= false
@@ -207,11 +203,10 @@ module WebMock
   end
 end
 
-class StubSocket #:nodoc:
-
+class StubSocket # :nodoc:
   attr_accessor :read_timeout, :continue_timeout, :write_timeout
 
-  def initialize(*args)
+  def initialize(*_args)
     @closed = false
   end
 
@@ -224,8 +219,7 @@ class StubSocket #:nodoc:
     nil
   end
 
-  def readuntil(*args)
-  end
+  def readuntil(*args); end
 
   def io
     @io ||= StubIO.new
@@ -234,35 +228,41 @@ class StubSocket #:nodoc:
   class StubIO
     def setsockopt(*args); end
     def peer_cert; end
-    def peeraddr; ["AF_INET", 443, "127.0.0.1", "127.0.0.1"] end
-    def ssl_version; "TLSv1.3" end
-    def cipher; ["TLS_AES_128_GCM_SHA256", "TLSv1.3", 128, 128] end
+
+    def peeraddr
+      ['AF_INET', 443, '127.0.0.1', '127.0.0.1']
+    end
+
+    def ssl_version
+      'TLSv1.3'
+    end
+
+    def cipher
+      ['TLS_AES_128_GCM_SHA256', 'TLSv1.3', 128, 128]
+    end
   end
 end
 
 module WebMock
   module NetHTTPUtility
-
     def self.request_signature_from_request(net_http, request, body = nil)
       path = request.path
 
-      if path.respond_to?(:request_uri) #https://github.com/bblimke/webmock/issues/288
-        path = path.request_uri
-      end
+      path = path.request_uri if path.respond_to?(:request_uri) # https://github.com/bblimke/webmock/issues/288
 
       path = WebMock::Util::URI.heuristic_parse(path).request_uri if path =~ /^http/
 
       uri = get_uri(net_http, path)
       method = request.method.downcase.to_sym
 
-      headers = Hash[*request.to_hash.map {|k,v| [k, v]}.inject([]) {|r,x| r + x}]
+      headers = Hash[*request.to_hash.map { |k, v| [k, v] }.inject([]) { |r, x| r + x }]
 
       if request.body_stream
         body = request.body_stream.read
         request.body_stream = nil
       end
 
-      if body != nil && body.respond_to?(:read)
+      if !body.nil? && body.respond_to?(:read)
         request.set_body_internal body.read
       else
         request.set_body_internal body
@@ -272,7 +272,7 @@ module WebMock
     end
 
     def self.get_uri(net_http, path = nil)
-      protocol = net_http.use_ssl? ? "https" : "http"
+      protocol = net_http.use_ssl? ? 'https' : 'http'
 
       hostname = net_http.address
       hostname = "[#{hostname}]" if /\A\[.*\]\z/ !~ hostname && /:/ =~ hostname
@@ -286,10 +286,9 @@ module WebMock
 
     def self.puts_warning_for_right_http_if_needed
       if !@was_right_http_connection_loaded && defined?(RightHttpConnection)
-        $stderr.puts "\nWarning: RightHttpConnection has to be required before WebMock is required !!!\n"
+        warn "\nWarning: RightHttpConnection has to be required before WebMock is required !!!\n"
       end
     end
-
   end
 end
 
